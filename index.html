@@ -1,0 +1,216 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scanner QR - Stock Taking</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      background: #f3f6fb;
+      color: #1f2937;
+    }
+
+    .container {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 20px;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 4px 18px #00000012;
+    }
+
+    h2 { margin-top: 0; font-size: 23px; }
+
+    p { line-height: 1.5; }
+
+    button {
+      width: 100%;
+      min-height: 50px;
+      margin-top: 12px;
+      padding: 12px;
+      border: 0;
+      border-radius: 10px;
+      background: #1769aa;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:disabled { opacity: 0.55; }
+
+    #stopButton { background: #64748b; }
+
+    #reader {
+      width: 100%;
+      margin-top: 16px;
+    }
+
+    #status {
+      margin-top: 14px;
+      overflow-wrap: anywhere;
+      font-size: 14px;
+    }
+
+    .error { color: #b42318; }
+    .success { color: #176b3a; }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h2>Scanner QR</h2>
+    <p>Arahkan kamera belakang ke QR yang berisi Part Number.</p>
+
+    <div id="reader"></div>
+    <div id="status" role="status">Scanner siap digunakan.</div>
+
+    <button id="startButton" onclick="mulaiScan()">
+      Mulai Scan QR
+    </button>
+
+    <button id="stopButton" onclick="hentikanScan()">
+      Batal
+    </button>
+  </div>
+
+  <script>
+    let scanner = null;
+    let sedangScan = false;
+    let hasilTerkirim = false;
+
+    const statusEl = document.getElementById("status");
+    const startButton = document.getElementById("startButton");
+
+    function setStatus(pesan, jenis = "") {
+      statusEl.textContent = pesan;
+      statusEl.className = jenis;
+    }
+
+    async function mulaiScan() {
+      if (sedangScan) return;
+
+      if (!window.isSecureContext) {
+        setStatus("Halaman harus dibuka melalui HTTPS.", "error");
+        return;
+      }
+
+      if (!navigator.mediaDevices ||
+          !navigator.mediaDevices.getUserMedia) {
+        setStatus("Browser tidak menyediakan akses kamera.", "error");
+        return;
+      }
+
+      if (typeof Html5Qrcode === "undefined") {
+        setStatus("Library scanner gagal dimuat. Periksa koneksi internet.", "error");
+        return;
+      }
+
+      hasilTerkirim = false;
+      startButton.disabled = true;
+      setStatus("Meminta akses kamera...");
+
+      try {
+        if (!scanner) {
+          scanner = new Html5Qrcode("reader");
+        }
+
+        await scanner.start(
+          { facingMode: "environment" },
+          {
+            fps: 10,
+            qrbox: { width: 250, height: 250 },
+            aspectRatio: 1
+          },
+          (decodedText) => {
+            if (hasilTerkirim) return;
+            hasilTerkirim = true;
+            kirimHasil(decodedText);
+          },
+          () => {}
+        );
+
+        sedangScan = true;
+        setStatus("Kamera aktif. Arahkan ke QR.");
+      } catch (err) {
+        sedangScan = false;
+        startButton.disabled = false;
+        setStatus(
+          "Kamera gagal dibuka: " +
+          (err.message || String(err)) +
+          ". Periksa izin kamera dan pengaturan browser.",
+          "error"
+        );
+        console.error("Kesalahan kamera:", err);
+      }
+    }
+
+    async function hentikanScan() {
+      if (scanner && sedangScan) {
+        try {
+          await scanner.stop();
+        } catch (err) {
+          console.error("Gagal menghentikan kamera:", err);
+        }
+      }
+
+      sedangScan = false;
+      startButton.disabled = false;
+      setStatus("Scanner dihentikan.");
+    }
+
+    async function kirimHasil(partNumber) {
+      try {
+        if (scanner && sedangScan) {
+          await scanner.stop();
+        }
+      } catch (err) {
+        console.error("Gagal menghentikan kamera:", err);
+      }
+
+      sedangScan = false;
+      startButton.disabled = false;
+
+      const hasil = String(partNumber).trim();
+
+      if (!hasil) {
+        setStatus("QR tidak berisi Part Number.", "error");
+        return;
+      }
+
+      if (!window.opener || window.opener.closed) {
+        setStatus(
+          "QR terbaca: " + hasil +
+          ". Buka scanner dari tombol Scan QR di aplikasi audit.",
+          "error"
+        );
+        return;
+      }
+
+      try {
+        window.opener.postMessage(
+          {
+            type: "QR_SCAN_RESULT",
+            value: hasil
+          },
+          "*"
+        );
+
+        setStatus("QR terbaca. Mengirim Part Number ke aplikasi audit...", "success");
+
+        setTimeout(() => window.close(), 500);
+      } catch (err) {
+        setStatus("Gagal mengirim hasil ke aplikasi audit.", "error");
+        console.error(err);
+      }
+    }
+  </script>
+</body>
+</html>
