@@ -67,7 +67,7 @@
 <body>
   <div class="container">
     <h2>Scanner QR</h2>
-    <p>Arahkan kamera belakang ke QR yang berisi Part Number.</p>
+    <p></p>
 
     <div id="reader"></div>
     <div id="status" role="status">Scanner siap digunakan.</div>
@@ -152,19 +152,49 @@
       }
     }
 
-    async function hentikanScan() {
-      if (scanner && sedangScan) {
-        try {
-          await scanner.stop();
-        } catch (err) {
-          console.error("Gagal menghentikan kamera:", err);
-        }
-      }
-
-      sedangScan = false;
-      startButton.disabled = false;
-      setStatus("Scanner dihentikan.");
+   async function hentikanScan() {
+  if (scanner && sedangScan) {
+    try {
+      await scanner.stop();
+    } catch (err) {
+      console.error("Gagal menghentikan kamera:", err);
     }
+  }
+
+  sedangScan = false;
+  startButton.disabled = false;
+
+  // Beri tahu aplikasi audit bahwa scan dibatalkan
+  try {
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage(
+        { type: "QR_SCAN_CANCELLED" },
+        "*"
+      );
+    }
+  } catch (err) {
+    console.error("Gagal mengirim status pembatalan:", err);
+  }
+
+  setStatus("Scanner ditutup.");
+
+  // Tutup jendela scanner
+  window.close();
+}
+
+// Beri tahu aplikasi audit jika jendela ditutup lewat tombol X
+window.addEventListener("beforeunload", function() {
+  try {
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage(
+        { type: "QR_SCAN_CANCELLED" },
+        "*"
+      );
+    }
+  } catch (err) {
+    console.error(err);
+  }
+});
 
     async function kirimHasil(partNumber) {
       try {
